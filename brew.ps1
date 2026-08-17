@@ -5,8 +5,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$FormulaDir = Join-Path $Root 'Formula'
 $Prefix = if ($env:BREW_PREFIX) { $env:BREW_PREFIX } else { Join-Path $HOME '.brew-with-makefile' }
+$FormulaDir = if (Test-Path (Join-Path $Root 'Formula')) { Join-Path $Root 'Formula' } else { Join-Path $Prefix 'Formula' }
 $Packages = Join-Path $Prefix 'packages'
 $Bin = Join-Path $Prefix 'bin'
 New-Item -ItemType Directory -Force $Packages, $Bin | Out-Null
@@ -63,15 +63,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0brew.ps1" %*
 "@ | Set-Content $launcher -Encoding ascii
     Copy-Item $PSCommandPath (Join-Path $Bin 'brew.ps1') -Force
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-    $parts = @($userPath -split ';' | Where-Object { $_ })
-    if ($parts -notcontains $Bin) {
-        [Environment]::SetEnvironmentVariable('Path', (($parts + $Bin) -join ';'), 'User')
-        $env:Path = "$Bin;$env:Path"
-        Write-Host "Added $Bin to your user PATH."
-    } else {
-        $env:Path = "$Bin;$env:Path"
-        Write-Host 'Brew is already on your user PATH.'
-    }
+    $parts = if ([string]::IsNullOrWhiteSpace($userPath)) { @() } else { @($userPath -split ';' | Where-Object { $_ }) }
+    if ($parts -notcontains $Bin) { [Environment]::SetEnvironmentVariable('Path', (($parts + $Bin) -join ';'), 'User') }
+    $env:Path = "$Bin;$env:Path"
     Write-Host 'Brew setup complete. Open a new PowerShell window, then use: brew search'
 }
 
@@ -109,28 +103,24 @@ switch ($Command.ToLower()) {
         $archiveName = [IO.Path]::GetFileName(([Uri]$f.url).AbsolutePath)
         if ([string]::IsNullOrWhiteSpace($archiveName)) { $archiveName = "$($f.name).download" }
         $archive = Join-Path $dest $archiveName
-        Write-Host "Downloading $($f.name) $($f.version)..."
-        Invoke-WebRequest -Uri $f.url -OutFile $archive
-        if ($f.sha256) {
+        try {
+            Write-Host "Downloading $($f.name) $($f.version)..."
+            Invoke-WebRequest -Uri $f.url -OutFile $archive
+            if (!$f.sha256) { throw "Formula '$($f.name)' has no SHA256 checksum." }
             $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
-            if ($actual -ne $f.sha256.ToLower()) { Remove-Item $dest -Recurse -Force; throw "SHA256 verification failed for $($f.name)." }
+            if ($actual -ne $f.sha256.ToLower()) { throw "SHA256 verification failed for $($f.name)." }
             Write-Host 'SHA256 verified.'
+            $type = if ($f.type) { $f.type.ToLower() } else { 'zip' }
+            if ($type -eq 'zip') { Expand-Archive -LiteralPath $archive -DestinationPath $dest -Force; Remove-Item $archive -Force }
+            elseif ($type -eq 'tar' -or $type -eq 'tar.gz' -or $type -eq 'tgz') { tar -xf $archive -C $dest; Remove-Item $archive -Force }
+            elseif ($type -ne 'file' -and $type -ne 'exe') { throw "Unsupported package type '$type'." }
+            Add-CommandShims $f $dest
+            Write-Host "Installed $($f.name) $($f.version)"
+            Write-Host "Binary shims: $Bin"
+        } catch {
+            if (Test-Path $dest) { Remove-Item $dest -Recurse -Force -ErrorAction SilentlyContinue }
+            throw
         }
-        $type = if ($f.type) { $f.type.ToLower() } else { 'zip' }
-        if ($type -eq 'zip') {
-            Expand-Archive -LiteralPath $archive -DestinationPath $dest -Force
-            Remove-Item $archive -Force
-        } elseif ($type -eq 'tar' -or $type -eq 'tar.gz' -or $type -eq 'tgz') {
-            tar -xf $archive -C $dest
-            Remove-Item $archive -Force
-        } elseif ($type -eq 'file' -or $type -eq 'exe') {
-            # Standalone executable; leave it in place for the shim step.
-        } else {
-            Write-Host "Downloaded $($f.name); no extraction performed for type '$type'."
-        }
-        Add-CommandShims $f $dest
-        Write-Host "Installed $($f.name) $($f.version)"
-        Write-Host "Binary shims: $Bin"
     }
     'uninstall' {
         if (!$Arguments.Count) { throw 'Usage: brew uninstall <name>' }
