@@ -37,9 +37,14 @@ jobs:
       - name: Validate formula JSON
         shell: pwsh
         run: |
-          Get-ChildItem Formula -Filter '*.json' | ForEach-Object {
-            $f = Get-Content $_.FullName -Raw | ConvertFrom-Json
-            if (!$f.name -or !$f.version -or !$f.url -or !$f.binaries) { throw "Invalid formula: $($_.Name)" }
+          $files = @(Get-ChildItem Formula -Filter '*.json')
+          if ($files.Count -eq 0) { throw 'No formulas found' }
+          foreach ($file in $files) {
+            $f = Get-Content $file.FullName -Raw | ConvertFrom-Json
+            foreach ($field in @('name','version','description','url','sha256','binaries')) {
+              if ($null -eq $f.$field -or ([string]$f.$field).Trim() -eq '') { throw "Invalid formula: $($file.Name) is missing $field" }
+            }
+            if ($f.sha256 -notmatch '^[0-9a-fA-F]{64}$') { throw "Invalid SHA-256 in $($file.Name)" }
             Write-Host "Validated $($f.name) $($f.version)"
           }
 
