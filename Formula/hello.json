@@ -1,0 +1,7 @@
+{
+  "name": "hello",
+  "version": "1.0.0",
+  "description": "A tiny test package used by brew-with-makefile",
+  "url": "https://example.com/hello-1.0.0.zip",
+  "sha256": ""
+}
