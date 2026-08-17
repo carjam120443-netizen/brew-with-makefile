@@ -10,9 +10,11 @@ try {
     if (!(Test-Path (Join-Path $Root 'Formula'))) { throw 'Formula directory was not found beside the installer.' }
 
     New-Item -ItemType Directory -Force $Bin, $FormulaTarget | Out-Null
-    Copy-Item (Join-Path $Root 'brew.ps1') (Join-Path $Bin 'brew.ps1') -Force
+    Copy-Item (Join-Path $Root 'brew.ps1') (Join-Path $Bin 'brew-main.ps1') -Force
+    $oldScript = Join-Path $Bin 'brew.ps1'
+    if (Test-Path $oldScript) { Remove-Item $oldScript -Force }
     Copy-Item (Join-Path $Root 'Formula\*') $FormulaTarget -Force
-    Set-Content (Join-Path $Bin 'brew.cmd') '@echo off','powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0brew.ps1" %*' -Encoding ascii
+    Set-Content (Join-Path $Bin 'brew.cmd') '@echo off','powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0brew-main.ps1" %*' -Encoding ascii
 
     $userPath = [Environment]::GetEnvironmentVariable('Path','User')
     if ([string]::IsNullOrWhiteSpace($userPath)) { $parts = @() } else { $parts = @($userPath -split ';' | Where-Object { $_ }) }
