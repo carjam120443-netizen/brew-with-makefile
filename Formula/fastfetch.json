@@ -1,0 +1,10 @@
+{
+  "name": "fastfetch",
+  "version": "2.66.0",
+  "description": "Fast system information tool for Windows",
+  "homepage": "https://github.com/fastfetch-cli/fastfetch",
+  "url": "https://github.com/fastfetch-cli/fastfetch/releases/download/2.66.0/fastfetch-windows-amd64.zip",
+  "sha256": "3035b8add360bc3142ce81ac39be352d3738273224e232195217f01c2398c87a",
+  "type": "zip",
+  "binaries": ["fastfetch.exe"]
+}
