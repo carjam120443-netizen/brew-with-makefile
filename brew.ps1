@@ -59,9 +59,11 @@ function Setup-Brew {
     $launcher = Join-Path $Bin 'brew.cmd'
     @"
 @echo off
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0brew.ps1" %*
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0brew-main.ps1" %*
 "@ | Set-Content $launcher -Encoding ascii
-    Copy-Item $PSCommandPath (Join-Path $Bin 'brew.ps1') -Force
+    Copy-Item $PSCommandPath (Join-Path $Bin 'brew-main.ps1') -Force
+    $oldScript = Join-Path $Bin 'brew.ps1'
+    if (Test-Path $oldScript) { Remove-Item $oldScript -Force }
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     $parts = if ([string]::IsNullOrWhiteSpace($userPath)) { @() } else { @($userPath -split ';' | Where-Object { $_ }) }
     if ($parts -notcontains $Bin) { [Environment]::SetEnvironmentVariable('Path', (($parts + $Bin) -join ';'), 'User') }
