@@ -7,6 +7,7 @@ on:
     paths:
       - 'brew.ps1'
       - 'Makefile'
+      - 'install.ps1'
       - 'Formula/**'
       - 'tests/**'
       - '.github/workflows/build-download.yml'
@@ -33,9 +34,26 @@ jobs:
         shell: pwsh
         run: make build
 
+      - name: Validate formula JSON
+        shell: pwsh
+        run: |
+          Get-ChildItem Formula -Filter '*.json' | ForEach-Object {
+            $f = Get-Content $_.FullName -Raw | ConvertFrom-Json
+            if (!$f.name -or !$f.version -or !$f.url -or !$f.binaries) { throw "Invalid formula: $($_.Name)" }
+            Write-Host "Validated $($f.name) $($f.version)"
+          }
+
       - name: Test
         shell: pwsh
         run: make test
+
+      - name: Test CLI
+        shell: pwsh
+        run: |
+          $help = powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\brew.ps1 help | Out-String
+          if ($help -notmatch 'brew setup') { throw 'CLI help test failed' }
+          $search = powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\brew.ps1 search | Out-String
+          foreach ($name in @('7zip','fastfetch','ripgrep')) { if ($search -notmatch $name) { throw "Formula missing from search: $name" } }
 
       - name: Create portable package
         shell: pwsh
@@ -46,13 +64,9 @@ jobs:
           New-Item -ItemType Directory -Force $stage | Out-Null
           Copy-Item brew.ps1 $stage
           Copy-Item Makefile $stage
+          Copy-Item install.ps1 $stage
           Copy-Item README.md $stage
           Copy-Item Formula (Join-Path $stage 'Formula') -Recurse
-          New-Item -ItemType Directory -Force (Join-Path $stage 'bin') | Out-Null
-          @'
-          @echo off
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0brew.ps1" %*
-          '@ | Set-Content (Join-Path $stage 'brew.cmd') -Encoding ascii
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $out -Force
           Get-Item $out
 
