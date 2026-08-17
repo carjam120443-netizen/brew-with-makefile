@@ -1,0 +1,10 @@
+{
+  "name": "7zip",
+  "version": "26.02",
+  "description": "7-Zip command-line archiver for Windows x64",
+  "homepage": "https://www.7-zip.org/",
+  "url": "https://github.com/ip7z/7zip/releases/download/26.02/7z2602-x64.exe",
+  "sha256": "6745fa76dc2ea031596d8678f6f6b99c3c1b435b4164a63485adbbc7b8d82ef0",
+  "type": "file",
+  "binaries": ["7z2602-x64.exe"]
+}
