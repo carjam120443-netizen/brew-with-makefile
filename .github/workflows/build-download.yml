@@ -1,0 +1,61 @@
+name: Build Windows Download
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'brew.ps1'
+      - 'Makefile'
+      - 'Formula/**'
+      - 'tests/**'
+      - '.github/workflows/build-download.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install GNU Make
+        shell: pwsh
+        run: scoop install make
+
+      - name: Build
+        shell: pwsh
+        run: make build
+
+      - name: Test
+        shell: pwsh
+        run: make test
+
+      - name: Create portable package
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP 'brew-with-makefile'
+          $out = Join-Path $env:GITHUB_WORKSPACE 'brew-with-makefile-windows.zip'
+          Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item brew.ps1 $stage
+          Copy-Item Makefile $stage
+          Copy-Item README.md $stage
+          Copy-Item Formula (Join-Path $stage 'Formula') -Recurse
+          New-Item -ItemType Directory -Force (Join-Path $stage 'bin') | Out-Null
+          @'
+          @echo off
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0brew.ps1" %*
+          '@ | Set-Content (Join-Path $stage 'brew.cmd') -Encoding ascii
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $out -Force
+          Get-Item $out
+
+      - name: Upload working download
+        uses: actions/upload-artifact@v4
+        with:
+          name: brew-with-makefile-windows
+          path: brew-with-makefile-windows.zip
+          if-no-files-found: error
+          retention-days: 30
