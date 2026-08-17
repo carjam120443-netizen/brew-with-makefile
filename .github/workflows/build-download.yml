@@ -8,6 +8,7 @@ on:
       - 'brew.ps1'
       - 'Makefile'
       - 'install.ps1'
+      - 'install.cmd'
       - 'Formula/**'
       - 'tests/**'
       - '.github/workflows/build-download.yml'
@@ -52,13 +53,25 @@ jobs:
         shell: pwsh
         run: make test
 
-      - name: Test CLI
+      - name: Test CLI and installer
         shell: pwsh
         run: |
           $help = powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\brew.ps1 help | Out-String
           if ($help -notmatch 'brew setup') { throw 'CLI help test failed' }
           $search = powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\brew.ps1 search | Out-String
           foreach ($name in @('7zip','fastfetch','ripgrep')) { if ($search -notmatch $name) { throw "Formula missing from search: $name" } }
+          if (!(Test-Path .\install.ps1)) { throw 'install.ps1 missing' }
+          if (!(Test-Path .\install.cmd)) { throw 'install.cmd missing' }
+
+          $testHome = Join-Path $env:RUNNER_TEMP 'brew-test-home'
+          if (Test-Path $testHome) { Remove-Item $testHome -Recurse -Force }
+          New-Item -ItemType Directory -Force $testHome | Out-Null
+          $env:BREW_PREFIX = Join-Path $testHome '.brew-with-makefile'
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+          if (!(Test-Path (Join-Path $env:BREW_PREFIX 'bin\brew.cmd'))) { throw 'Installer did not create brew.cmd' }
+          if (!(Test-Path (Join-Path $env:BREW_PREFIX 'Formula\fastfetch.json'))) { throw 'Installer did not copy formulas' }
+          $installedSearch = powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $env:BREW_PREFIX 'bin\brew.ps1') search | Out-String
+          if ($installedSearch -notmatch 'fastfetch') { throw 'Installed brew cannot find formulas' }
 
       - name: Create portable package
         shell: pwsh
@@ -70,6 +83,7 @@ jobs:
           Copy-Item brew.ps1 $stage
           Copy-Item Makefile $stage
           Copy-Item install.ps1 $stage
+          Copy-Item install.cmd $stage
           Copy-Item README.md $stage
           Copy-Item Formula (Join-Path $stage 'Formula') -Recurse
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $out -Force
