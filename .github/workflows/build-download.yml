@@ -23,7 +23,11 @@ jobs:
 
       - name: Install GNU Make
         shell: pwsh
-        run: scoop install make
+        run: |
+          choco install make -y --no-progress
+          $make = Get-Command make -ErrorAction Stop
+          Write-Host "Using make at $($make.Source)"
+          make --version
 
       - name: Build
         shell: pwsh
