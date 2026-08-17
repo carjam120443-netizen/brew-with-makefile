@@ -11,10 +11,13 @@ try {
 
     New-Item -ItemType Directory -Force $Bin, $FormulaTarget | Out-Null
     Copy-Item (Join-Path $Root 'brew.ps1') (Join-Path $Bin 'brew-main.ps1') -Force
+    Copy-Item (Join-Path $Root 'Formula\*') $FormulaTarget -Force
+    $launcher = Join-Path $Bin 'brew.cmd'
+    @('@echo off','powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0brew-main.ps1" %*') | Set-Content $launcher -Encoding ascii
+
+    # Remove the old direct PowerShell launcher if a previous version installed it.
     $oldScript = Join-Path $Bin 'brew.ps1'
     if (Test-Path $oldScript) { Remove-Item $oldScript -Force }
-    Copy-Item (Join-Path $Root 'Formula\*') $FormulaTarget -Force
-    Set-Content (Join-Path $Bin 'brew.cmd') '@echo off','powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0brew-main.ps1" %*' -Encoding ascii
 
     $userPath = [Environment]::GetEnvironmentVariable('Path','User')
     if ([string]::IsNullOrWhiteSpace($userPath)) { $parts = @() } else { $parts = @($userPath -split ';' | Where-Object { $_ }) }
