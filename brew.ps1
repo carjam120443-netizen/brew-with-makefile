@@ -12,11 +12,12 @@ $Bin = Join-Path $Prefix 'bin'
 New-Item -ItemType Directory -Force $Packages, $Bin | Out-Null
 
 function Show-Help {
-    Write-Host 'brew-with-makefile - a tiny native Windows brew-style package manager'
+    Write-Host 'brew-with-makefile - native Windows package manager'
     Write-Host ''
     Write-Host 'Commands:'
+    Write-Host '  brew setup'
     Write-Host '  brew list'
-    Write-Host '  brew search <name>'
+    Write-Host '  brew search [name]'
     Write-Host '  brew install <name>'
     Write-Host '  brew uninstall <name>'
     Write-Host '  brew info <name>'
@@ -34,6 +35,11 @@ function Add-CommandShims($Formula, $InstallDir) {
     if (!$Formula.binaries) { return }
     foreach ($binary in $Formula.binaries) {
         $source = Join-Path $InstallDir $binary
+        if (!(Test-Path $source)) {
+            $leaf = Split-Path $binary -Leaf
+            $found = Get-ChildItem $InstallDir -Recurse -File -Filter $leaf | Select-Object -First 1
+            if ($found) { $source = $found.FullName }
+        }
         if (!(Test-Path $source)) { throw "Formula '$($Formula.name)' listed binary '$binary', but it was not found after extraction." }
         $target = Join-Path $Bin ([IO.Path]::GetFileName($binary))
         Copy-Item $source $target -Force
@@ -48,18 +54,42 @@ function Remove-CommandShims($Formula) {
     }
 }
 
+function Setup-Brew {
+    New-Item -ItemType Directory -Force $Bin | Out-Null
+    $launcher = Join-Path $Bin 'brew.cmd'
+    @"
+@echo off
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0brew.ps1" %*
+"@ | Set-Content $launcher -Encoding ascii
+    Copy-Item $PSCommandPath (Join-Path $Bin 'brew.ps1') -Force
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $parts = @($userPath -split ';' | Where-Object { $_ })
+    if ($parts -notcontains $Bin) {
+        [Environment]::SetEnvironmentVariable('Path', (($parts + $Bin) -join ';'), 'User')
+        $env:Path = "$Bin;$env:Path"
+        Write-Host "Added $Bin to your user PATH."
+    } else {
+        $env:Path = "$Bin;$env:Path"
+        Write-Host 'Brew is already on your user PATH.'
+    }
+    Write-Host 'Brew setup complete. Open a new PowerShell window, then use: brew search'
+}
+
 switch ($Command.ToLower()) {
     'help' { Show-Help }
+    'setup' { Setup-Brew }
     'list' {
-        Get-ChildItem $Packages -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }
+        $items = Get-ChildItem $Packages -Directory -ErrorAction SilentlyContinue
+        if ($items) { $items | ForEach-Object { $_.Name } } else { Write-Host 'No packages installed.' }
     }
     'search' {
         $term = if ($Arguments.Count) { $Arguments[0] } else { '' }
-        Get-ChildItem $FormulaDir -Filter '*.json' | Where-Object { $_.BaseName -like "*$term*" } | ForEach-Object { $_.BaseName }
+        $items = Get-ChildItem $FormulaDir -Filter '*.json' | Where-Object { $_.BaseName -like "*$term*" }
+        if ($items) { $items | ForEach-Object { $_.BaseName } } else { Write-Host 'No matching formulae.' }
     }
     'info' {
-        $f = Get-Formula $Arguments[0]
-        $f | ConvertTo-Json -Depth 10
+        if (!$Arguments.Count) { throw 'Usage: brew info <name>' }
+        Get-Formula $Arguments[0] | ConvertTo-Json -Depth 10
     }
     'prefix' { Write-Host $Prefix }
     'doctor' {
@@ -67,6 +97,7 @@ switch ($Command.ToLower()) {
         Write-Host "Formulae: $FormulaDir"
         Write-Host "PowerShell: $($PSVersionTable.PSVersion)"
         if (Get-Command tar -ErrorAction SilentlyContinue) { Write-Host 'Archive extraction: available' } else { Write-Host 'Archive extraction: missing tar' }
+        if (Test-Path $Bin) { Write-Host "Brew bin: $Bin" }
         Write-Host 'Doctor: OK'
     }
     'install' {
@@ -83,6 +114,7 @@ switch ($Command.ToLower()) {
         if ($f.sha256) {
             $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
             if ($actual -ne $f.sha256.ToLower()) { Remove-Item $dest -Recurse -Force; throw "SHA256 verification failed for $($f.name)." }
+            Write-Host 'SHA256 verified.'
         }
         $type = if ($f.type) { $f.type.ToLower() } else { 'zip' }
         if ($type -eq 'zip') {
@@ -91,11 +123,13 @@ switch ($Command.ToLower()) {
         } elseif ($type -eq 'tar' -or $type -eq 'tar.gz' -or $type -eq 'tgz') {
             tar -xf $archive -C $dest
             Remove-Item $archive -Force
+        } elseif ($type -eq 'file' -or $type -eq 'exe') {
+            # Standalone executable; leave it in place for the shim step.
         } else {
             Write-Host "Downloaded $($f.name); no extraction performed for type '$type'."
         }
         Add-CommandShims $f $dest
-        Write-Host "Installed $($f.name) $($f.version) to $dest"
+        Write-Host "Installed $($f.name) $($f.version)"
         Write-Host "Binary shims: $Bin"
     }
     'uninstall' {
